@@ -17,8 +17,23 @@ import { publicDecrypt } from "crypto";
 import { publicKey } from "@metaplex-foundation/umi";
 const MARKET_PROGRAM_ID = new anchor.web3.PublicKey('EYk41B1oPd5hcTNcx7u2oGykSHHaEq4Uo9i2oYmZvDXb');
 
-async function getMetadataPDA(mint: anchor.web3.PublicKey): Promise<anchor.web3.PublicKey> {
-  const [metadataPDA] = anchor.web3.PublicKey.findProgramAddressSync(
+async function getEscrowPDA(nft_mint: web3.PublicKey) {
+  return anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("escrow"), nft_mint.toBuffer()],
+    MARKET_PROGRAM_ID
+  );
+
+}
+
+function getMarketplacePDA() {
+  return anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("marketplace")],
+    MARKET_PROGRAM_ID
+  );
+}
+
+async function getMetadataPDA(mint: anchor.web3.PublicKey) {
+  return anchor.web3.PublicKey.findProgramAddressSync(
     [
       Buffer.from("metadata"),
       new web3.PublicKey(mpl.MPL_TOKEN_METADATA_PROGRAM_ID.toString()).toBuffer(),
@@ -26,12 +41,18 @@ async function getMetadataPDA(mint: anchor.web3.PublicKey): Promise<anchor.web3.
     ],
     new web3.PublicKey(mpl.MPL_TOKEN_METADATA_PROGRAM_ID.toString())
   );
-  return metadataPDA;
+}
+
+function getMarkedplaceVaultPDA(mint: web3.PublicKey) {
+  return anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("marketplace_vault"), mint.toBuffer()],
+    MARKET_PROGRAM_ID
+  );
 }
 
 function getNftMintPDA(vendor: anchor.web3.PublicKey, name: string) {
   return anchor.web3.PublicKey.findProgramAddressSync(
-    [Buffer.from("nft_mint"), vendor.toBuffer(), Buffer.from(name)],
+    [Buffer.from("nft_mint"), Buffer.from(name)],
     MARKET_PROGRAM_ID
   );
 }
@@ -53,8 +74,6 @@ describe("service-marketplace", () => {
   const vendor = anchor.web3.Keypair.generate();
   const buyer = anchor.web3.Keypair.generate();
 
-  let marketplacePDA: anchor.web3.PublicKey;
-  let marketplaceBump: number;
 
   let paymentMint: anchor.web3.PublicKey;
 
@@ -77,84 +96,76 @@ describe("service-marketplace", () => {
       null,
       6
     );
+
+    /// transfer some of the paymentmint to the buyer 
+    const buyerPaymentAccount = await createAssociatedTokenAccount(provider.connection, buyer, paymentMint, buyer.publicKey);
+    await mintTo(provider.connection, marketplaceAuth, paymentMint, buyerPaymentAccount, marketplaceAuth, 2000000);
   });
   it.only("Initializes the marketplace", async () => {
-    [marketplacePDA, marketplaceBump] = anchor.web3.PublicKey.findProgramAddressSync(
-      [Buffer.from("mpl_marketplace")],
-      program.programId
-    );
+    const marketplacePda = getMarketplacePDA()
 
     await program.methods
       .initializeMarketplace()
       .accounts({
         authority: marketplaceAuth.publicKey,
-        marketplace: marketplacePDA,
+        marketplace: marketplacePda[0],
         systemProgram: anchor.web3.SystemProgram.programId,
       })
       .signers([marketplaceAuth])
       .rpc();
 
-    const marketplaceAccount = await program.account.marketplace.fetch(marketplacePDA);
+    const marketplaceAccount = await program.account.marketplace.fetch(marketplacePda[0]);
     assert.equal(marketplaceAccount.authority.toBase58(), marketplaceAuth.publicKey.toBase58());
     assert.equal(marketplaceAccount.totalServices, 0);
     assert.equal(marketplaceAccount.royaltyPercentage, 5);
   });
 
-  it.only("Create a service", async () => {
+  it.only("Mint a service NFT", async () => {
     const name = "test1"
     const nftMintPda = getNftMintPDA(vendor.publicKey, name);
     const vendorTokenAccount = await getAssociatedTokenAddress(nftMintPda[0], vendor.publicKey);
-
-    const [servicePDA] = getServicePDA(name)
+    const marketplacePda = getMarketplacePDA()
 
     const metadataPDA = await getMetadataPDA(nftMintPda[0]);
-    console.log(`vendor ${vendor.publicKey.toBase58()}, nft_mint: ${nftMintPda[0].toBase58()}, service: ${servicePDA.toBase58()}, metadata: ${metadataPDA.toBase58()}`);
+    console.log(`vendor ${vendor.publicKey.toBase58()}, nft_mint: ${nftMintPda[0].toBase58()}, metadata: ${metadataPDA[0].toBase58()}`);
     await program.methods
-      .createService(name, "https://example.com/metadata.json")
+      .mintService(name, "https://example.com/metadata.json")
       .accounts({
         vendor: vendor.publicKey,
-        marketplace: marketplacePDA,
-        service: servicePDA,
+        marketplace: marketplacePda[0],
         nftMint: nftMintPda[0],
         vendorTokenAccount: vendorTokenAccount,
-        metadata: metadataPDA,
+        metadata: metadataPDA[0],
       })
       .signers([vendor])
       .rpc();
     console.log("done")
 
-    const serviceAccount = await program.account.service.fetch(servicePDA);
-    assert.equal(serviceAccount.vendor.toBase58(), vendor.publicKey.toBase58());
-    assert.equal(serviceAccount.name, name);
-    assert.equal(serviceAccount.description, "A test service description");
-    assert.equal(serviceAccount.price.toNumber(), 1000000);
-    assert.equal(serviceAccount.isSoulbound, false);
-    assert.equal(serviceAccount.nftMint.toBase58(), nftMintPda[0].toBase58());
 
 
 
   });
 
-  it("List a service", async () => {
+  it.only("List a service NFT", async () => {
     const serviceName = "test1"
-    const nftMint = await createMint(provider.connection, vendor, vendor.publicKey, null, 0);
-    const vendorTokenAccount = await createAssociatedTokenAccount(provider.connection, vendor, nftMint, vendor.publicKey);
-
+    const nftMintPda = getNftMintPDA(vendor.publicKey, serviceName);
+    const vendorTokenAccount = await getAssociatedTokenAddress(nftMintPda[0], vendor.publicKey);
     const [servicePDA] = getServicePDA(serviceName)
+    const marketplacePda = getMarketplacePDA()
+
+
+
     await program.methods
       .listService(serviceName, "A test service description", new anchor.BN(1000000), paymentMint, false)
       .accounts({
         vendor: vendor.publicKey,
-        marketplace: marketplacePDA,
+        marketplace: marketplacePda[0],
         service: servicePDA,
-        nftMint: nftMint,
+        nftMint: nftMintPda[0],
         vendorTokenAccount: vendorTokenAccount,
-        metadata: await getMetadataPDA(nftMint),
-        tokenProgram: TOKEN_PROGRAM_ID,
-        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        escrowServiceAccount: (await getEscrowPDA(nftMintPda[0]))[0],
+        metadata: (await getMetadataPDA(nftMintPda[0]))[0],
         tokenMetadataProgram: mpl.MPL_TOKEN_METADATA_PROGRAM_ID,
-        systemProgram: anchor.web3.SystemProgram.programId,
-        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
       })
       .signers([vendor])
       .rpc();
@@ -165,123 +176,137 @@ describe("service-marketplace", () => {
     assert.equal(serviceAccount.description, "A test service description");
     assert.equal(serviceAccount.price.toNumber(), 1000000);
     assert.equal(serviceAccount.isSoulbound, false);
-    assert.equal(serviceAccount.nftMint.toBase58(), nftMint.toBase58());
+    assert.equal(serviceAccount.nftMint.toBase58(), nftMintPda[0].toBase58());
 
-    const marketplaceAccount = await program.account.marketplace.fetch(marketplacePDA);
+    const marketplaceAccount = await program.account.marketplace.fetch(marketplacePda[0]);
     assert.equal(marketplaceAccount.totalServices, 1);
 
   });
-  it("Purchases a service", async () => {
+  it.only("Purchases a service", async () => {
     try {
-      const serviceName = "test2"
+      const serviceName = "test1"
       const nftMintPda = getNftMintPDA(vendor.publicKey, serviceName);
       console.log("create vendor token account")
-      const vendorTokenAccount = await getAssociatedTokenAddress(nftMintPda[0], vendor.publicKey);
       console.log("create buyer token account")
-      const buyerTokenAccount = await getAssociatedTokenAddress(nftMintPda[0], buyer.publicKey);
-
+      const buyerNftAccount = await getAssociatedTokenAddress(nftMintPda[0], buyer.publicKey);
+      const buyerPaymentAccount = await getAssociatedTokenAddress(paymentMint, buyer.publicKey);
+      const marketplacePda = getMarketplacePDA()
 
 
       const [servicePDA] = getServicePDA(serviceName)
-      const metadataPDA = await getMetadataPDA(nftMintPda[0]);
-
-      // List the service
-      console.log(`vendor ${vendor.publicKey.toBase58()}, nft_mint: ${nftMintPda[0].toBase58()}, service: ${servicePDA.toBase58()}, metadata: ${metadataPDA.toBase58()}`);
-      await program.methods
-        .createService(serviceName, "A test service description", new anchor.BN(1000000), paymentMint, false, "https://example.com/metadata.json")
-        .accounts({
-          vendor: vendor.publicKey,
-          marketplace: marketplacePDA,
-          service: servicePDA,
-          nftMint: nftMintPda[0],
-          vendorTokenAccount: vendorTokenAccount,
-          metadata: metadataPDA,
-        })
-        .signers([vendor])
-        .rpc();
-
-      console.log("create buyer payment account")
-      // Create and fund buyer's payment account
-      const buyerPaymentAccount = await createAssociatedTokenAccount(provider.connection, buyer, paymentMint, buyer.publicKey);
-      await mintTo(provider.connection, marketplaceAuth, paymentMint, buyerPaymentAccount, marketplaceAuth, 2000000);
 
       // Create vendor's payment account
       const vendorPaymentAccount = await createAssociatedTokenAccount(provider.connection, vendor, paymentMint, vendor.publicKey);
 
       // Purchase the service
-      console.log(`buyer ${buyer.publicKey.toBase58()}, vendor ${vendor.publicKey.toBase58()}, service: ${servicePDA.toBase58()}, nft_mint: ${nftMintPda[0].toBase58()}, vendorTokenAccount: ${vendorTokenAccount.toBase58()}, buyerTokenAccount: ${buyerTokenAccount.toBase58()}, buyerPaymentAccount: ${buyerPaymentAccount.toBase58()}, vendorPaymentAccount: ${vendorPaymentAccount.toBase58()}`);
+      console.log(`buyer ${buyer.publicKey.toBase58()}, vendor ${vendor.publicKey.toBase58()}, service: ${servicePDA.toBase58()}, nft_mint: ${nftMintPda[0].toBase58()}, buyerTokenAccount: ${buyerNftAccount.toBase58()}, buyerPaymentAccount: ${buyerPaymentAccount.toBase58()}, vendorPaymentAccount: ${vendorPaymentAccount.toBase58()}`);
+
+      // check the vendor balance before purchase
+      const vendorNftBalance = await provider.connection.getTokenAccountBalance(await getAssociatedTokenAddress(nftMintPda[0], vendor.publicKey));
+      assert.equal(vendorNftBalance.value.uiAmount, 0);
+
+      // check that the nft is in escrow 
+      const escrowNftBalance = await provider.connection.getTokenAccountBalance((await getEscrowPDA(nftMintPda[0]))[0]);
+      assert.equal(escrowNftBalance.value.uiAmount, 1);
+
+      // check the buyer payment balance before purchase
+      const buyerPaymentBalance = await provider.connection.getTokenAccountBalance(buyerPaymentAccount);
+      assert.equal(buyerPaymentBalance.value.uiAmount, 2);
+
+
+      // check the price of the service account
+      const serviceAccount = await program.account.service.fetch(servicePDA);
+      assert.equal(serviceAccount.price.toNumber(), 1000000);
+      console.log("buying service: ", JSON.stringify(serviceAccount));
+
       await program.methods
-        .purchaseService()
+        .buyService(serviceName)
         .accounts({
           buyer: buyer.publicKey,
           vendor: vendor.publicKey,
+          marketplace: marketplacePda[0],
           service: servicePDA,
           tradeMint: paymentMint,
           nftMint: nftMintPda[0],
-          vendorTokenAccount: vendorTokenAccount,
-          buyerTokenAccount: buyerTokenAccount,
+          escrowNftAccount: (await getEscrowPDA(nftMintPda[0]))[0],
+          buyerNftAccount: buyerNftAccount,
           buyerPaymentAccount: buyerPaymentAccount,
-          vendorPaymentAccount: vendorPaymentAccount,
+
         })
         .signers([buyer])
         .rpc();
 
       // Check NFT ownership
-      const buyerNftBalance = await provider.connection.getTokenAccountBalance(buyerTokenAccount);
+      const buyerNftBalance = await provider.connection.getTokenAccountBalance(buyerNftAccount);
       assert.equal(buyerNftBalance.value.uiAmount, 1);
 
-      // Check payment
+      // check that the vendor has no NFTs
+      const vendorNftBalance2 = await provider.connection.getTokenAccountBalance(await getAssociatedTokenAddress(nftMintPda[0], vendor.publicKey));
+      assert.equal(vendorNftBalance2.value.uiAmount, 0);
+
+      // check that there are no nfts in the escrow account
+      const escrowNftBalance2 = await provider.connection.getTokenAccountBalance((await getEscrowPDA(nftMintPda[0]))[0]);
+      assert.equal(escrowNftBalance2.value.uiAmount, 0);
+
+
+      // check that the price was transferred to the vendor
       const vendorPaymentBalance = await provider.connection.getTokenAccountBalance(vendorPaymentAccount);
+      console.log("vendor payment balance", vendorPaymentBalance.value.amount);
       assert.equal(vendorPaymentBalance.value.uiAmount, 1);
+
+      // check the buyer payment account
+      const buyerPaymentBalance2 = await provider.connection.getTokenAccountBalance(buyerPaymentAccount);
+      console.log("buyer payment balance", buyerPaymentBalance2.value.amount);
+      assert.equal(buyerPaymentBalance2.value.uiAmount, 1);
+
+
+
+
     } catch (e) {
       console.log(e)
     }
   });
 
-  it("Resells a service", async () => {
-    const serviceName = "test3"
-    const nftMint = await createMint(provider.connection, vendor, vendor.publicKey, null, 0);
-    const vendorTokenAccount = await createAssociatedTokenAccount(provider.connection, vendor, nftMint, vendor.publicKey);
-    const buyerTokenAccount = await createAssociatedTokenAccount(provider.connection, buyer, nftMint, buyer.publicKey);
-    const newBuyer = anchor.web3.Keypair.generate();
-    const newBuyerTokenAccount = await createAssociatedTokenAccount(provider.connection, newBuyer, nftMint, newBuyer.publicKey);
-
+  it.only("Resells a service", async () => {
+    const serviceName = "test1"
+    const nftMintPda = getNftMintPDA(vendor.publicKey, serviceName);
+    console.log("create vendor token account")
+    const sellerPaymentAccount = await getAssociatedTokenAddress(paymentMint, buyer.publicKey);
+    console.log("create buyer token account")
+    const sellerNftAccount = await getAssociatedTokenAddress(nftMintPda[0], buyer.publicKey);
+    const escrowNftAccount = await getEscrowPDA(nftMintPda[0])
+    const marketplacePda = getMarketplacePDA()
+    const marketplaceVaultPda = getMarkedplaceVaultPDA(paymentMint)
     const [servicePDA] = getServicePDA(serviceName)
-    // List and purchase the service (reusing previous test logic)
-    // ...
 
-    // Create and fund new buyer's payment account
-    const newBuyerPaymentAccount = await createAssociatedTokenAccount(provider.connection, newBuyer, paymentMint, newBuyer.publicKey);
-    await mintTo(provider.connection, marketplaceAuth, paymentMint, newBuyerPaymentAccount, marketplaceAuth, 2000000);
 
     // Resell the service
     await program.methods
-      .resellService(new anchor.BN(1500000))
+      .resellService(serviceName, new anchor.BN(1500000))
       .accounts({
         seller: buyer.publicKey,
-        buyer: newBuyer.publicKey,
-        vendor: vendor.publicKey,
-        marketplace: marketplacePDA,
+        marketplace: marketplacePda[0],
+        marketplaceVault: marketplaceVaultPda[0],
         service: servicePDA,
-        nftMint: nftMint,
-        sellerTokenAccount: buyerTokenAccount,
-        buyerTokenAccount: newBuyerTokenAccount,
-        buyerPaymentAccount: newBuyerPaymentAccount,
-        sellerPaymentAccount: await createAssociatedTokenAccount(provider.connection, buyer, paymentMint, buyer.publicKey),
-        vendorPaymentAccount: await createAssociatedTokenAccount(provider.connection, vendor, paymentMint, vendor.publicKey),
+        nftMint: nftMintPda[0],
+        listMint: paymentMint,
+        escrowNftAccount: (escrowNftAccount)[0],
+        sellerPaymentAccount: sellerPaymentAccount,
+        sellerNftAccount: sellerNftAccount,
       })
-      .signers([buyer, newBuyer])
+      .signers([buyer])
       .rpc();
 
+    console.log("done reselling")
     // Check NFT ownership
-    const newBuyerNftBalance = await provider.connection.getTokenAccountBalance(newBuyerTokenAccount);
+    const newBuyerNftBalance = await provider.connection.getTokenAccountBalance(escrowNftAccount[0]);
     assert.equal(newBuyerNftBalance.value.uiAmount, 1);
 
     // Check payments (including royalties)
-    const sellerPaymentBalance = await provider.connection.getTokenAccountBalance(await createAssociatedTokenAccount(provider.connection, buyer, paymentMint, buyer.publicKey));
-    assert.equal(sellerPaymentBalance.value.uiAmount, 1.425); // 95% of 1.5 SOL
+    const sellerPaymentBalance = await provider.connection.getTokenAccountBalance(sellerPaymentAccount);
+    assert.equal(sellerPaymentBalance.value.uiAmount, 1.925); // 95% of 1.5 SOL
 
-    const vendorRoyaltyBalance = await provider.connection.getTokenAccountBalance(await createAssociatedTokenAccount(provider.connection, vendor, paymentMint, vendor.publicKey));
+    const vendorRoyaltyBalance = await provider.connection.getTokenAccountBalance(marketplaceVaultPda[0]);
     assert.equal(vendorRoyaltyBalance.value.uiAmount, 0.075); // 5% of 1.5 SOL
   });
 
@@ -290,6 +315,7 @@ describe("service-marketplace", () => {
     const nftMint = await createMint(provider.connection, vendor, vendor.publicKey, null, 0);
     const vendorTokenAccount = await createAssociatedTokenAccount(provider.connection, vendor, nftMint, vendor.publicKey);
     const buyerTokenAccount = await createAssociatedTokenAccount(provider.connection, buyer, nftMint, buyer.publicKey);
+    const marketplacePda = getMarketplacePDA()
 
     const [servicePDA] = getServicePDA(serviceName)
 
@@ -298,7 +324,7 @@ describe("service-marketplace", () => {
       .listService(serviceName, "A soulbound service description", new anchor.BN(1000000), true, "https://example.com/metadata.json")
       .accounts({
         vendor: vendor.publicKey,
-        marketplace: marketplacePDA,
+        marketplace: marketplacePda[0],
         service: servicePDA,
         nftMint: nftMint,
         vendorTokenAccount: vendorTokenAccount,
@@ -323,7 +349,7 @@ describe("service-marketplace", () => {
           seller: buyer.publicKey,
           buyer: anchor.web3.Keypair.generate().publicKey,
           vendor: vendor.publicKey,
-          marketplace: marketplacePDA,
+          marketplace: marketplacePda[0],
           service: servicePDA,
           nftMint: nftMint,
           sellerTokenAccount: buyerTokenAccount,
