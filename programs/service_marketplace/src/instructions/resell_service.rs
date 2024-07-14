@@ -94,7 +94,15 @@ pub struct ResellService<'info> {
 pub fn handle(ctx: Context<ResellService>,name: String, new_price: u64) -> Result<()> {
     let service = &mut ctx.accounts.service;
     let marketplace = &ctx.accounts.marketplace;
+    let nft_mint = &ctx.accounts.nft_mint;
+    let seller_nft_account = &ctx.accounts.seller_nft_account;
 
+    // Check if the token is soulbound by checking if the 
+    // token account is frozen and the freeze authority is none
+    if (seller_nft_account.is_frozen() && nft_mint.freeze_authority.is_none()) {
+        return Err(ErrorCode::SoulboundNotResellable.into());
+    }
+  
     require!(!service.is_soulbound, ErrorCode::SoulboundNotResellable);
 
     // Calculate royalty

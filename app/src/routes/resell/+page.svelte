@@ -16,6 +16,7 @@
     import { BN } from "bn.js";
 
     let ownedServices = [];
+    let signature = null;
     let newPrice = 0;
 
     async function fetchOwnedServices() {
@@ -33,39 +34,17 @@
         const marketplaceAccount =
             await program.account.marketplace.fetch(marketplacePDA);
 
-        ownedServices = (
-            await Promise.all(
-                Array.from(
-                    { length: marketplaceAccount.totalServices },
-                    async (_, i) => {
-                        const [servicePDA] = getServicePDA(`service_${i}`);
-                        const service =
-                            await program.account.service.fetch(servicePDA);
-                        const [nftMintPDA] = getNftMintPDA(
-                            service.vendor,
-                            service.name,
-                        );
-                        const buyerNftAccount = await getAssociatedTokenAddress(
-                            nftMintPDA,
-                            $walletStore.publicKey,
-                        );
-                        const balance =
-                            await provider.connection.getTokenAccountBalance(
-                                buyerNftAccount,
-                            );
-                        return balance.value.uiAmount > 0 ? service : null;
-                    },
-                ),
-            )
-        ).filter(Boolean);
+        ownedServices = (await program.account.service.all()).filter(
+            (service) => service.account.vendor.equals($walletStore.publicKey),
+        );
     }
 
     async function resellService(service) {
         if (!$walletStore.publicKey) return;
-        if (!process.env.RPC_URL) throw new Error("RPC_URL not set");
+        if (!PUBLIC_RPC_URL) throw new Error("RPC_URL not set");
 
         const provider = new AnchorProvider(
-            new web3.Connection(process.env.RPC_URL),
+            new web3.Connection(PUBLIC_RPC_URL),
             $walletStore as any,
             {},
         );
@@ -85,7 +64,7 @@
         );
 
         try {
-            await program.methods
+            const resellServiceIx = await program.methods
                 .resellService(
                     service.name,
                     new BN(newPrice * web3.LAMPORTS_PER_SOL),
@@ -101,8 +80,25 @@
                     sellerPaymentAccount: sellerPaymentAccount,
                     sellerNftAccount: sellerNftAccount,
                 })
-                .rpc();
+                .instruction();
 
+            const ixs = [resellServiceIx];
+            const txMessage = await new web3.TransactionMessage({
+                instructions: ixs,
+                recentBlockhash: (
+                    await program.provider.connection.getLatestBlockhash()
+                ).blockhash,
+                payerKey: $walletStore.publicKey,
+            }).compileToV0Message();
+
+            const vtx = new web3.VersionedTransaction(txMessage);
+            const signedTx = await $walletStore.signTransaction(vtx);
+            signature = await provider.connection.sendTransaction(signedTx);
+            await provider.connection.confirmTransaction({
+                signature,
+                ...(await provider.connection.getLatestBlockhash()),
+            });
+            console.log("signature: ", signature);
             alert("Service listed for resale successfully!");
             await fetchOwnedServices();
         } catch (error) {
