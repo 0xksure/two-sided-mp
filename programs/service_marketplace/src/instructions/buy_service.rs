@@ -85,8 +85,10 @@ pub struct BuyService<'info> {
 }
 
 pub fn handle(ctx: Context<BuyService>, name: String) -> Result<()> {
-    let service = &ctx.accounts.service;
+    let service = &mut ctx.accounts.service;
+    let buyer = &ctx.accounts.buyer;
     msg!("Service price: {}", service.price);
+    service.vendor = buyer.key();
 
     // Transfer payment
     token::transfer(

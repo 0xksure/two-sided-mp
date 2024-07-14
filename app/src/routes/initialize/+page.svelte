@@ -24,25 +24,27 @@
         const [marketplacePDA] = getMarketplacePDA();
 
         try {
-            const transaction = await program.methods
+            const instruction = await program.methods
                 .initializeMarketplace()
                 .accounts({
                     authority: $walletStore.publicKey,
                     marketplace: marketplacePDA,
                 })
-                .transaction();
+                .instruction();
 
-            let blockhash = (
-                await program.provider.connection.getLatestBlockhash(
-                    "finalized",
-                )
-            ).blockhash;
-            transaction.recentBlockhash = blockhash;
-            transaction.feePayer = $walletStore.publicKey;
+            const txMessage = await new web3.TransactionMessage({
+                instructions: [instruction],
+                recentBlockhash: (
+                    await program.provider.connection.getLatestBlockhash()
+                ).blockhash,
+                payerKey: $walletStore.publicKey,
+            }).compileToV0Message();
+
+            const vtx = new web3.VersionedTransaction(txMessage);
 
             // sign
             // sign instruction and create transaction
-            const signedTx = await $walletStore.signTransaction(transaction);
+            const signedTx = await $walletStore.signTransaction(vtx);
             console.log("signedTx: ", signedTx);
             signature = await provider.connection.sendTransaction(signedTx);
             await provider.connection.confirmTransaction({

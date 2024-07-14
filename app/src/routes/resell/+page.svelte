@@ -1,6 +1,8 @@
 <script lang="ts">
     import { walletStore } from "@svelte-on-solana/wallet-adapter-core";
     import { getProgram } from "$lib/program";
+    import { PUBLIC_RPC_URL } from "$env/static/public";
+
     import {
         getMarketplacePDA,
         getNftMintPDA,
@@ -8,19 +10,20 @@
         getMarkedplaceVaultPDA,
         getEscrowPDA,
     } from "$lib/utils";
-    import { web3, AnchorProvider, BN } from "@coral-xyz/anchor";
+    import { web3, AnchorProvider } from "@coral-xyz/anchor";
     import { getAssociatedTokenAddress } from "@solana/spl-token";
     import ServiceCard from "$lib/components/ServiceCard.svelte";
+    import { BN } from "bn.js";
 
     let ownedServices = [];
     let newPrice = 0;
 
     async function fetchOwnedServices() {
         if (!$walletStore.publicKey) return;
-        if (!process.env.RPC_URL) throw new Error("RPC_URL not set");
+        if (!PUBLIC_RPC_URL) throw new Error("RPC_URL not set");
 
         const provider = new AnchorProvider(
-            new web3.Connection(process.env.RPC_URL),
+            new web3.Connection(PUBLIC_RPC_URL),
             $walletStore as any,
             {},
         );

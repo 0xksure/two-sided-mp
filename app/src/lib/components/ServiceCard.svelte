@@ -1,15 +1,21 @@
 <script lang="ts">
-    export let name: string;
-    export let description: string;
-    export let price: number;
-    export let isSoulbound: boolean;
+    import { TokenAccountOneTimeAuthMintMismatchError } from "@metaplex-foundation/mpl-token-metadata";
+    import type BN from "bn.js";
+
+    export let account: {
+        name: string;
+        description: string;
+        price: BN;
+        mint: string;
+        isSoulbound: boolean;
+    };
 </script>
 
 <div class="card">
-    <h3>{name}</h3>
-    <p>{description}</p>
-    <p>Price: {price} SOL</p>
-    <p>Soulbound: {isSoulbound ? "Yes" : "No"}</p>
+    <h3>{`Title: ${account.name}`}</h3>
+    <p>{account.description}</p>
+    <p>Price: {account.price} {account.mint}</p>
+    <p>Soulbound: {account.isSoulbound ? "Yes" : "No"}</p>
 </div>
 
 <style>
