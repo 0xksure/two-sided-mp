@@ -28,12 +28,18 @@ pub struct BuyService<'info> {
     )]
     pub vendor: AccountInfo<'info>,
 
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [b"marketplace".as_ref()],
+        bump=marketplace.bump,
+    )]
     pub marketplace: Box<Account<'info, Marketplace>>,
 
     /// The internal service account for the nft
     #[account(
         mut,
+        seeds = [b"service".as_ref(),name.as_bytes()],
+        bump = service.bump,
     )]
     pub service: Box<Account<'info, Service>>,
 

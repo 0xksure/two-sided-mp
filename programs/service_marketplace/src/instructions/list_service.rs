@@ -58,7 +58,8 @@ pub struct ListService<'info> {
     )]
     pub vendor_token_account: Account<'info, TokenAccount>,
 
-    /// CHECK: This is not dangerous because we don't read or write from this account
+    /// CHECK: This is passed along to the metapleex program
+    /// and its seeds are checked there
     #[account(mut)]
     pub metadata: UncheckedAccount<'info>,
 

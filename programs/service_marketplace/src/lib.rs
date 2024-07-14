@@ -29,16 +29,19 @@ pub mod service_marketplace {
 
     use super::*;
 
+    /// Initialize the marketplace with information about the program,
+    /// as well as parameters such as the royalty percentage.
     pub fn initialize_marketplace(ctx: Context<InitializeMarketplace>) -> Result<()> {
         instructions::initialize_marketplace::handle(ctx)
     }
 
+    /// Mint a service NFT against the Metaplus standard
     pub fn mint_service(ctx: Context<MintService>, name: String, uri: String) -> Result<()> {
         instructions::mint_service::handle(ctx, name, uri)
     }
 
     /// list service places the service NFT in an
-    /// escrow account and creates a metadata account
+    /// escrow account
     pub fn list_service(
         ctx: Context<ListService>,
         name: String,
@@ -63,6 +66,8 @@ pub mod service_marketplace {
         instructions::buy_service::handle(ctx, name)
     }
 
+    /// resell service allows the current owner of the
+    /// service NFT to resell it
     pub fn resell_service(ctx: Context<ResellService>, name: String, new_price: u64) -> Result<()> {
         instructions::resell_service::handle(ctx, name, new_price)
     }

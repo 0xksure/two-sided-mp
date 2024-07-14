@@ -1,3 +1,5 @@
+use std::arch::aarch64::vneg_f32;
+
 use anchor_lang::prelude::*;
 
 use anchor_spl::associated_token::AssociatedToken;
@@ -15,6 +17,8 @@ pub struct MintService<'info> {
     #[account(mut)]
     pub vendor: Signer<'info>,
 
+    /// The nft mint that mints the one Service NFT
+    /// Assumed that each service is unique on name
     #[account(
         init,
         seeds = [b"nft_mint".as_ref(),name.as_bytes()],
@@ -26,6 +30,7 @@ pub struct MintService<'info> {
     )]
     pub nft_mint: Account<'info, Mint>,
 
+    /// Scare
     #[account(
         init_if_needed,
         payer = vendor,
@@ -34,13 +39,14 @@ pub struct MintService<'info> {
     )]
     pub vendor_token_account: Account<'info, TokenAccount>,
 
-    /// CHECK: This is not dangerous because we don't read or write from this account
+    /// CHECK: This account is passed along to metaplex
+    /// and is the seeds are checked there
     #[account(mut)]
     pub metadata: UncheckedAccount<'info>,
 
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
-    /// CHECK:
+
     pub token_metadata_program: Program<'info, Metadata>,
 
     pub system_program: Program<'info, System>,
@@ -48,6 +54,8 @@ pub struct MintService<'info> {
 }
 
 pub fn handle(ctx: Context<MintService>, name: String, uri: String) -> Result<()> {
+    let vendor_token_account = ctx.accounts.vendor_token_account.to_account_info();
+
     msg!("Minting NFT");
     token::mint_to(
         CpiContext::new(
