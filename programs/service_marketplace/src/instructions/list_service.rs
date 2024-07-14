@@ -19,7 +19,11 @@ use crate::service::Service;
 pub struct ListService<'info> {
     #[account(mut)]
     pub vendor: Signer<'info>,
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [b"marketplace".as_ref()],
+        bump=marketplace.bump,
+    )]
     pub marketplace: Box<Account<'info, Marketplace>>,
 
     #[account(
@@ -53,12 +57,13 @@ pub struct ListService<'info> {
         associated_token::authority = vendor,
     )]
     pub vendor_token_account: Account<'info, TokenAccount>,
+
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
     pub metadata: UncheckedAccount<'info>,
+
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
-    /// CHECK:
     pub token_metadata_program: Program<'info, Metadata>,
 
     pub system_program: Program<'info, System>,
@@ -101,6 +106,7 @@ pub fn handle(
         ),
         1,
     );
+
     match mint_res {
         Ok(_) => {}
         Err(e) => {
@@ -109,28 +115,6 @@ pub fn handle(
         }
     }
 
-    // let create_res = TransferV1CpiBuilder::new(&ctx.accounts.token_metadata_program)
-    //     .token(&ctx.accounts.vendor_token_account.to_account_info())
-    //     .token_owner(&ctx.accounts.vendor.to_account_info())
-    //     .destination_token(&ctx.accounts.escrow_service_account.to_account_info())
-    //     .destination_owner(&ctx.accounts.marketplace.to_account_info())
-    //     .mint(&ctx.accounts.nft_mint.to_account_info())
-    //     .metadata(&ctx.accounts.metadata.to_account_info())
-    //     .authority(&ctx.accounts.vendor.to_account_info())
-    //     .payer(&ctx.accounts.vendor.to_account_info())
-    //     .system_program(&ctx.accounts.system_program.to_account_info())
-    //     .sysvar_instructions(&ctx.accounts.rent.to_account_info())
-    //     .spl_token_program(&ctx.accounts.token_program.to_account_info())
-    //     .spl_ata_program(&ctx.accounts.associated_token_program.to_account_info())
-    //     .amount(1)
-    //     .invoke();
-    // match create_res {
-    //     Ok(_) => {}
-    //     Err(e) => {
-    //         msg!("Error creating metadata account");
-    //         return Err(e.into());
-    //     }
-    // }
     msg!("Metadata account created");
     marketplace.total_services += 1;
 

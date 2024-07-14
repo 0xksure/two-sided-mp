@@ -25,5 +25,6 @@ pub fn handle(ctx: Context<InitializeMarketplace>) -> Result<()> {
     marketplace.total_services = 0;
     marketplace.royalty_percentage = 5; // 5% royalty as an example
     marketplace.bump_array = [ctx.bumps.marketplace; 1];
+    marketplace.bump = ctx.bumps.marketplace;
     Ok(())
 }

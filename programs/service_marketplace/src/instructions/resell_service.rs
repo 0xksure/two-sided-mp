@@ -22,9 +22,16 @@ pub struct ResellService<'info> {
     #[account(mut)]
     pub seller: Signer<'info>,
 
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [b"marketplace".as_ref()],
+        bump=marketplace.bump,
+    )]
     pub marketplace: Box<Account<'info, Marketplace>>,
 
+
+    /// Marketplace vault is the same as a 
+    /// treasury holding the royalties
     #[account(
         init_if_needed,
         payer = seller,

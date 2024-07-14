@@ -7,7 +7,7 @@ pub use state::*;
 
 use anchor_lang::prelude::*;
 
-declare_id!("EYk41B1oPd5hcTNcx7u2oGykSHHaEq4Uo9i2oYmZvDXb");
+declare_id!("92q1D3m2dHrmBWfpn5YZHaoG5pxkk5CTJH3e9SazdNC7");
 
 /*
 Using Anchor, create a 2-sided marketplace model for services.

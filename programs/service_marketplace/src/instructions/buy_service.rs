@@ -75,7 +75,7 @@ pub struct BuyService<'info> {
         init_if_needed,
         payer = buyer,
         associated_token::mint = trade_mint,
-        associated_token::authority = buyer,
+        associated_token::authority = vendor,
     )]
     pub vendor_payment_account: Box<Account<'info, TokenAccount>>,
 

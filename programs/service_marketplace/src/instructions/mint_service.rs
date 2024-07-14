@@ -33,9 +33,11 @@ pub struct MintService<'info> {
         associated_token::authority = vendor,
     )]
     pub vendor_token_account: Account<'info, TokenAccount>,
+
     /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(mut)]
     pub metadata: UncheckedAccount<'info>,
+
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     /// CHECK:
@@ -60,7 +62,6 @@ pub fn handle(ctx: Context<MintService>, name: String, uri: String) -> Result<()
     )?;
 
     msg!("Creating metadata account");
-
     let create_metadata_account_res = CreateMetadataAccountV3Cpi::new(
         &ctx.accounts.token_metadata_program,
         CreateMetadataAccountV3CpiAccounts {

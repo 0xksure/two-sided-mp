@@ -6,6 +6,7 @@ pub struct Marketplace {
     pub total_services: u64,
     pub royalty_percentage: u8,
     pub bump_array: [u8; 1],
+    pub bump: u8,
 }
 
 impl Marketplace {

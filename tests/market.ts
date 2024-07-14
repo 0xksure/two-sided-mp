@@ -13,9 +13,7 @@ import { assert } from "chai";
 import * as web3 from "@solana/web3.js";
 
 import * as mpl from "@metaplex-foundation/mpl-token-metadata";
-import { publicDecrypt } from "crypto";
-import { publicKey } from "@metaplex-foundation/umi";
-const MARKET_PROGRAM_ID = new anchor.web3.PublicKey('EYk41B1oPd5hcTNcx7u2oGykSHHaEq4Uo9i2oYmZvDXb');
+const MARKET_PROGRAM_ID = new anchor.web3.PublicKey('92q1D3m2dHrmBWfpn5YZHaoG5pxkk5CTJH3e9SazdNC7');
 
 async function getEscrowPDA(nft_mint: web3.PublicKey) {
   return anchor.web3.PublicKey.findProgramAddressSync(
@@ -101,7 +99,7 @@ describe("service-marketplace", () => {
     const buyerPaymentAccount = await createAssociatedTokenAccount(provider.connection, buyer, paymentMint, buyer.publicKey);
     await mintTo(provider.connection, marketplaceAuth, paymentMint, buyerPaymentAccount, marketplaceAuth, 2000000);
   });
-  it.only("Initializes the marketplace", async () => {
+  it("Initializes the marketplace", async () => {
     const marketplacePda = getMarketplacePDA()
 
     await program.methods
@@ -120,7 +118,7 @@ describe("service-marketplace", () => {
     assert.equal(marketplaceAccount.royaltyPercentage, 5);
   });
 
-  it.only("Mint a service NFT", async () => {
+  it("Mint a service NFT", async () => {
     const name = "test1"
     const nftMintPda = getNftMintPDA(vendor.publicKey, name);
     const vendorTokenAccount = await getAssociatedTokenAddress(nftMintPda[0], vendor.publicKey);
@@ -146,7 +144,7 @@ describe("service-marketplace", () => {
 
   });
 
-  it.only("List a service NFT", async () => {
+  it("List a service NFT", async () => {
     const serviceName = "test1"
     const nftMintPda = getNftMintPDA(vendor.publicKey, serviceName);
     const vendorTokenAccount = await getAssociatedTokenAddress(nftMintPda[0], vendor.publicKey);
@@ -182,7 +180,7 @@ describe("service-marketplace", () => {
     assert.equal(marketplaceAccount.totalServices, 1);
 
   });
-  it.only("Purchases a service", async () => {
+  it("Purchases a service", async () => {
     try {
       const serviceName = "test1"
       const nftMintPda = getNftMintPDA(vendor.publicKey, serviceName);
@@ -267,7 +265,7 @@ describe("service-marketplace", () => {
     }
   });
 
-  it.only("Resells a service", async () => {
+  it("Resells a service", async () => {
     const serviceName = "test1"
     const nftMintPda = getNftMintPDA(vendor.publicKey, serviceName);
     console.log("create vendor token account")
@@ -297,14 +295,13 @@ describe("service-marketplace", () => {
       .signers([buyer])
       .rpc();
 
-    console.log("done reselling")
     // Check NFT ownership
     const newBuyerNftBalance = await provider.connection.getTokenAccountBalance(escrowNftAccount[0]);
     assert.equal(newBuyerNftBalance.value.uiAmount, 1);
 
     // Check payments (including royalties)
     const sellerPaymentBalance = await provider.connection.getTokenAccountBalance(sellerPaymentAccount);
-    assert.equal(sellerPaymentBalance.value.uiAmount, 1.925); // 95% of 1.5 SOL
+    assert.equal(sellerPaymentBalance.value.uiAmount, 0.925); // 95% of 1.5 SOL
 
     const vendorRoyaltyBalance = await provider.connection.getTokenAccountBalance(marketplaceVaultPda[0]);
     assert.equal(vendorRoyaltyBalance.value.uiAmount, 0.075); // 5% of 1.5 SOL
@@ -312,28 +309,36 @@ describe("service-marketplace", () => {
 
   it("Fails to resell a soulbound service", async () => {
     const serviceName = "test4"
-    const nftMint = await createMint(provider.connection, vendor, vendor.publicKey, null, 0);
+    const nftMintPDA = getNftMintPDA(vendor.publicKey, serviceName);
     const vendorTokenAccount = await createAssociatedTokenAccount(provider.connection, vendor, nftMint, vendor.publicKey);
     const buyerTokenAccount = await createAssociatedTokenAccount(provider.connection, buyer, nftMint, buyer.publicKey);
     const marketplacePda = getMarketplacePDA()
-
+    const metadataPda = await getMetadataPDA(nftMintPDA[0])
     const [servicePDA] = getServicePDA(serviceName)
+
+    // mint a soulbound service
+    await program.methods
+      .mintService(serviceName, "https://example.com/metadata.json")
+      .accounts({
+        vendor: vendor.publicKey,
+        marketplace: marketplacePda[0],
+        nftMint: nftMintPDA[0],
+        vendorTokenAccount: vendorTokenAccount,
+        metadata: metadataPda[0],
+      })
+      .signers([vendor])
+      .rpc();
 
     // List soulbound service
     await program.methods
-      .listService(serviceName, "A soulbound service description", new anchor.BN(1000000), true, "https://example.com/metadata.json")
+      .listService(serviceName, "A soulbound service description", new anchor.BN(1000000), paymentMint, true)
       .accounts({
         vendor: vendor.publicKey,
         marketplace: marketplacePda[0],
         service: servicePDA,
-        nftMint: nftMint,
+        nftMint: nftMintPDA[0],
         vendorTokenAccount: vendorTokenAccount,
-        metadata: await getMetadataPDA(nftMint),
-        tokenProgram: TOKEN_PROGRAM_ID,
-        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-        tokenMetadataProgram: mpl.MPL_TOKEN_METADATA_PROGRAM_ID,
-        systemProgram: anchor.web3.SystemProgram.programId,
-        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        metadata: metadataPda[0],
       })
       .signers([vendor])
       .rpc();
@@ -344,14 +349,14 @@ describe("service-marketplace", () => {
     // Attempt to resell soulbound service
     try {
       await program.methods
-        .resellService(new anchor.BN(1500000))
+        .resellService(serviceName, new anchor.BN(1500000))
         .accounts({
           seller: buyer.publicKey,
           buyer: anchor.web3.Keypair.generate().publicKey,
           vendor: vendor.publicKey,
           marketplace: marketplacePda[0],
           service: servicePDA,
-          nftMint: nftMint,
+          nftMint: nftMintPDA[0],
           sellerTokenAccount: buyerTokenAccount,
           buyerTokenAccount: await createAssociatedTokenAccount(provider.connection, anchor.web3.Keypair.generate(), nftMint, anchor.web3.Keypair.generate().publicKey),
           buyerPaymentAccount: await createAssociatedTokenAccount(provider.connection, anchor.web3.Keypair.generate(), paymentMint, anchor.web3.Keypair.generate().publicKey),
