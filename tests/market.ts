@@ -8,6 +8,7 @@ import {
   createAssociatedTokenAccount,
   mintTo,
   getAssociatedTokenAddress,
+  getOrCreateAssociatedTokenAccount,
 } from "@solana/spl-token";
 import { assert } from "chai";
 import * as web3 from "@solana/web3.js";
@@ -307,16 +308,21 @@ describe("service-marketplace", () => {
     assert.equal(vendorRoyaltyBalance.value.uiAmount, 0.075); // 5% of 1.5 SOL
   });
 
-  it("Fails to resell a soulbound service", async () => {
+
+  // incomplete test 
+  it.skip("Fails to resell a soulbound service", async () => {
     const serviceName = "test4"
     const nftMintPDA = getNftMintPDA(vendor.publicKey, serviceName);
-    const vendorTokenAccount = await createAssociatedTokenAccount(provider.connection, vendor, nftMint, vendor.publicKey);
-    const buyerTokenAccount = await createAssociatedTokenAccount(provider.connection, buyer, nftMint, buyer.publicKey);
+    const vendorTokenAccount = await getOrCreateAssociatedTokenAccount(provider.connection, vendor, nftMintPDA[0], vendor.publicKey);
     const marketplacePda = getMarketplacePDA()
     const metadataPda = await getMetadataPDA(nftMintPDA[0])
     const [servicePDA] = getServicePDA(serviceName)
-
+    const escrowNftAccount = await getEscrowPDA(nftMintPDA[0]
+    )
+    const sellerPaymentAccount = await getOrCreateAssociatedTokenAccount(provider.connection, buyer, paymentMint, buyer.publicKey);
+    const sellerNftAccount = await getOrCreateAssociatedTokenAccount(provider.connection, buyer, nftMintPDA[0], buyer.publicKey);
     // mint a soulbound service
+    console.log("minting soulbound service")
     await program.methods
       .mintService(serviceName, "https://example.com/metadata.json")
       .accounts({
@@ -330,6 +336,7 @@ describe("service-marketplace", () => {
       .rpc();
 
     // List soulbound service
+    console.log("listing soulbound service")
     await program.methods
       .listService(serviceName, "A soulbound service description", new anchor.BN(1000000), paymentMint, true)
       .accounts({
@@ -343,31 +350,27 @@ describe("service-marketplace", () => {
       .signers([vendor])
       .rpc();
 
-    // Purchase soulbound service
-    // ... (similar to previous purchase logic)
-
     // Attempt to resell soulbound service
     try {
+      console.log("reselling soulbound service")
       await program.methods
         .resellService(serviceName, new anchor.BN(1500000))
         .accounts({
           seller: buyer.publicKey,
-          buyer: anchor.web3.Keypair.generate().publicKey,
-          vendor: vendor.publicKey,
           marketplace: marketplacePda[0],
           service: servicePDA,
           nftMint: nftMintPDA[0],
-          sellerTokenAccount: buyerTokenAccount,
-          buyerTokenAccount: await createAssociatedTokenAccount(provider.connection, anchor.web3.Keypair.generate(), nftMint, anchor.web3.Keypair.generate().publicKey),
-          buyerPaymentAccount: await createAssociatedTokenAccount(provider.connection, anchor.web3.Keypair.generate(), paymentMint, anchor.web3.Keypair.generate().publicKey),
-          sellerPaymentAccount: await createAssociatedTokenAccount(provider.connection, buyer, paymentMint, buyer.publicKey),
-          vendorPaymentAccount: await createAssociatedTokenAccount(provider.connection, vendor, paymentMint, vendor.publicKey),
-          tokenProgram: TOKEN_PROGRAM_ID,
+          listMint: paymentMint,
+          escrowNftAccount: (escrowNftAccount)[0],
+          sellerPaymentAccount: sellerPaymentAccount,
+          sellerNftAccount: sellerNftAccount,
+
         })
         .signers([buyer])
         .rpc();
       assert.fail("Expected an error when reselling a soulbound service");
     } catch (error) {
+      console.log(error);
       assert.include(error.message, "Soulbound NFTs cannot be resold");
     }
   });

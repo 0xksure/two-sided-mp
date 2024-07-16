@@ -99,7 +99,7 @@ pub fn handle(ctx: Context<ResellService>,name: String, new_price: u64) -> Resul
 
     // Check if the token is soulbound by checking if the 
     // token account is frozen and the freeze authority is none
-    if (seller_nft_account.is_frozen() && nft_mint.freeze_authority.is_none()) {
+    if seller_nft_account.is_frozen() && nft_mint.freeze_authority.is_none() {
         return Err(ErrorCode::SoulboundNotResellable.into());
     }
   
